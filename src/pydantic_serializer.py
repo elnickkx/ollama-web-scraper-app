@@ -83,6 +83,19 @@ class CreateEvent(BaseModel):
         from_attributes = True
 
 
+class EventMetadata(BaseModel):
+    event_id: str
+    event_name: str
+    website_uri: str
+    file_blob_path: str
+    durations: int
+    status: str
+    is_active: bool
+    recipient_delivery: bool
+    start_date: str
+    end_date: str
+
+
 class EventScrapeData(BaseModel):
     event_id: str
     user_id: typing.Optional[int]
@@ -99,5 +112,4 @@ class EventScrapeData(BaseModel):
         return page_limiter or 1
 
 
-__all__ = ["UserLogin", "UserData", "CreateUser", "LoginData", "CheckoutSession", "EventSeatData", "CreateEvent",
-           "EventMetadata", "EventBookinData", "EventScrapeData"]
+__all__ = ["UserLogin", "UserData", "CreateUser", "LoginData", "CheckoutSession", "CreateEvent", "EventScrapeData", "EventMetadata"]
