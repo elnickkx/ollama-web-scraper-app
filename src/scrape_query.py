@@ -2,7 +2,7 @@
 """
 
 @Filename : scrape query handler
-@created :  Dept 28 11:42 2020
+@created :  Sept 28 11:42 2020
 @project: atlys-interview-assignment
 @author : Nikkhil Butola
 """
@@ -278,7 +278,7 @@ async def __update_scrape_event_metadata(*, event_id: uuid.uuid1, **kwargs):
         if event_data := await ScrapeEventTable.get_event_details(event_id=str(event_id)):
             __started_at = event_data.start_date
             __ended_at = datetime.datetime.utcnow()
-            duration_diff = __started_at - __ended_at
+            duration_diff = __ended_at - __started_at
             duration_diff = duration_diff.total_seconds()
             kwargs["durations"] = int(duration_diff)
             kwargs["end_date"] = __ended_at

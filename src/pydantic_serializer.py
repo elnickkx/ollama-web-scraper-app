@@ -4,7 +4,7 @@
 """
 
 @Filename : pydantic serializer
-@created :  Dept 28 11:42 2020
+@created :  Sept 28 11:42 2020
 @project: atlys-interview-assignment
 @author : Nikkhil Butola
 """
@@ -75,7 +75,7 @@ class CreateEvent(BaseModel):
     website_uri: str
     start_date: datetime
     status: typing.Optional[str] = "OPENED"
-    user_id: int
+    user_id: typing.Optional[str]
     pages: typing.Optional[int] = 3
     proxy_string: typing.Optional[str] = ""
 
@@ -98,7 +98,7 @@ class EventMetadata(BaseModel):
 
 class EventScrapeData(BaseModel):
     event_id: str
-    user_id: typing.Optional[int]
+    user_id: typing.Optional[str]
     website_uri: typing.Union[str, typing.List]
     page_limiter: int
     # starts_at: typing.Optional[str] = "0" # time-str --> 1330

@@ -3,7 +3,7 @@
 """
 
 @Filename : application config
-@created :  Dept 28 11:42 2020
+@created :  Sept 28 11:42 2020
 @project: atlys-interview-assignment
 @author : Nikkhil Butola
 """

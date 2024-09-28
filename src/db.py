@@ -3,7 +3,7 @@
 """
 
 @Filename : db app interface
-@created :  Dept 28 11:42 2020
+@created :  Sept 28 11:42 2020
 @project: atlys-interview-assignment
 @author : Nikkhil Butola
 """
@@ -41,6 +41,7 @@ import traceback
 from secure_handling import get_password_hash
 from session import DBSession, get_async_session, _DBBase, DBEngine
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 loggingFormat = "[%(filename)s: %(lineno)s- %(funcName)11s() ] %(asctime)s: %(name)s:%(levelname)s %(message)s"
@@ -58,7 +59,7 @@ class EventStatus(enum.Enum):
 class UserTable(_DBBase):
     __tablename__ = "users"
 
-    user_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid1(), index=True)
     username = Column(String(255), nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
@@ -66,7 +67,7 @@ class UserTable(_DBBase):
     last_name = Column(String(150))
     is_active = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
-    # parent_id = Column(Integer, ForeignKey(id))  ## confirm the syntax
+    # parent_id = Column(UUID(as_uuid=True), ForeignKey(id))  ## confirm the syntax
 
     # foreign relationship mapping
     events = relationship("ScrapeEventTable", back_populates="user")
@@ -103,36 +104,41 @@ class UserTable(_DBBase):
 
     @classmethod
     async def create(cls, *, params, _db: Session = Depends(get_async_session)):
-        _parent_id = None
         if not params.email_address:
             return None
 
         # check whether user with email addr exists
         if params.email_address:
             if _user := await cls.get_user_by_email(email_addr=params.email_address):
-                return _user
+                return _us
 
-        # or create a new user with email address
-        hashed_password = get_password_hash(params.password)
-        user = cls(
-            username=params.username,
-            email=params.email_address,
-            hashed_password=hashed_password,
-            first_name=params.first_name,
-            last_name=params.last_name,
-            is_admin=params.is_admin,
-            is_active=True,
-        )
+        try:
+            # or create a new user with email address
+            hashed_password = get_password_hash(params.password)
+            user = cls(
+                username=params.username,
+                email=params.email_address,
+                hashed_password=hashed_password,
+                first_name=params.first_name,
+                last_name=params.last_name,
+                is_admin=params.is_admin,
+                is_active=True,
+            )
 
-        async with DBSession() as session:
-            async with session.begin():
-                _ = session.add(user)
+            async with DBSession() as session:
+                async with session.begin():
+                    _ = session.add(user)
 
-            await session.commit()
-            session.refresh(user)
-            session.close()
+                await session.commit()
+                session.refresh(user)
+                session.close()
 
-        return user
+        except Exception:
+            logger.error(traceback.format_exc())
+            raise Exception
+
+        else:
+            return user
 
     @classmethod
     async def update_metadata(cls, *, user_id, **kwargs):
@@ -190,11 +196,11 @@ class ScrapeEventTable(_DBBase):
     status = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     recipient_delivery = Column(Boolean, default=False, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.user_id"))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"))
     event_metadata = Column(JSONB, nullable=True)
 
     # foreignKey relations
-    user = relationship("UserTable", back_populates="scrape_events")
+    user = relationship("UserTable", back_populates="events")
 
     def serialize(self):
         return {"name": self.event_name, "id": str(self.event_id), "current_status": self.status, "website_uri": self.website_uri, "start_date": str(self.start_date), "end_date": str(self.end_date)}
@@ -290,7 +296,7 @@ class ScrapeEventTable(_DBBase):
 class TransactionTable(_DBBase):
     __tablename__ = "transactions"
 
-    transaction_id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid1(), index=True)
     transaction_date = Column(DateTime, default=datetime.utcnow)
     column_name = Column(String(255), nullable=False)
     existing_value = Column(String(255), nullable=False)
@@ -298,8 +304,8 @@ class TransactionTable(_DBBase):
     blob_filename = Column(String(255), nullable=False)
 
     # foreign key referencin'
-    event_id = Column(Integer, ForeignKey("scrape_events.event_id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("scrape_events.event_id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False)
 
     def serialize(self):
         return {"transaction_id": self.transaction_id, "blob_filename": self.blob_filename, "event_id": self.event_id, "user_id": self.user_id, }
