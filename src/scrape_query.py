@@ -35,8 +35,9 @@ import traceback
 import json
 import pathlib
 from constants import df_index_columns
-from db import ScrapeEventTable
+from db import ScrapeEventTable, TransactionTable
 from authentication import perform_retry
+from redis_utility import get_memcached_obj_data
 
 
 ## configure the base logger settings for logging
@@ -48,6 +49,7 @@ logging.basicConfig(format=loggingFormat)
 # setting the pd dataframe maximum width
 pd.set_option('display.max_colwidth', None)
 limit_page_counter, image_counter = 1, 1  ## default value for limit page counter[need to set as env]
+__no_query_modification = True
 
 __agent_header_list = [
     'Mozilla/5.0 (Windows; U; Windows NT 6.1; x64; fr; rv:1.9.2.13) Gecko/20101203 Firebird/3.6.13',
@@ -143,7 +145,7 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
                                            page_idx: typing.Union[None, int] = 1,
                                            __paginator_index: typing.Union[None, typing.List] = None, **kwargs):
 
-    global limit_page_counter, image_counter
+    global limit_page_counter, image_counter, __no_query_modification
 
     try:
         if page_idx != 1 and not soup_query_response:
@@ -196,6 +198,7 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
 
         # print(__paginator_index, " ", page_idx)
         while page_idx <= limit_page_counter:
+            transaction_mapper = []
             ## caution handlin' to scrape all enlist products pagewise,
             ## and deduce multi-FOR handlin -> WHILE operator sujective
             if scraped_product_info := soup_query_response.findAll("div", class_=["product-inner clearfix"]):
@@ -241,7 +244,7 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
 
                     # __product_hash_mapper["product_identifier"] = str(uuid.uuid1())
                     # __product_hash_mapper["page_id"] = page_idx
-                    __product_hash_mapper["product_title"] = _product.select("h2")[0].get_text().strip()
+                    __product_hash_mapper["product_title"] = __product_title = _product.select("h2")[0].get_text().strip()
 
                     ## if not discount offered on product
                     if product_price := _product.select("del span bdi"):
@@ -255,10 +258,26 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
 
                     ## if products discounted value exists
                     if discount_price := _product.select("ins span"):
-                        __product_hash_mapper["discounted_price"] = discount_price[0].get_text()
+                        __product_hash_mapper["discounted_price"] = __product_price = discount_price[0].get_text()
 
                     else:
-                        __product_hash_mapper["discounted_price"] = __product_hash_mapper["published_price"]
+                        __product_hash_mapper["discounted_price"] = __product_price = __product_hash_mapper["published_price"]
+
+                    # check for metadata update on published-price for scraped product
+                    if _value := __product_price and get_memcached_obj_data(parent_obj=__product_title, object_attr="product_price", compare_to=__product_price):
+                        # perform the transaction record SQL query to record
+                        # column_name: str, existing_value: str, updated_value: str, event_id: int, user_id: int,
+                        _tranx_id = await TransactionTable.perform_event_transaction(
+                            column_name="published_price",
+                            existing_value=str(_value[0]),
+                            updated_value=str(_value[1]),
+                            event_id=str(kwargs["event_id"]),
+                            user_id=str(kwargs["user_id"]),
+                            blob_filename=kwargs["blob_filename"],
+                        )
+
+                        if _tranx_id and __no_query_modification:
+                            __no_query_modification = False
 
                     __product_hash_mapper["linked_images"] = __meta_images
                     __pg_product_mapper.append(__product_hash_mapper)
@@ -349,12 +368,28 @@ async def __update_scrape_event_metadata(*, event_id: uuid.uuid1, **kwargs):
         return _response
 
 
+async def check_scrape_event_exists(*, target_uri: str) -> typing.Tuple[bool, str]:
+    blob_file_path: str = ""
+    try:
+        if _fetched_event := await ScrapeEventTable.get_event_details_by_uri(target_uri=target_uri):
+            blob_file_path = _fetched_event.file_blob_path
+
+    except Exception:
+        logger.error(traceback.format_exc())
+        return False, blob_file_path
+
+    return True, blob_file_path
+
+
 async def perform_scraping_handling(
         event_id: int,
-        event_params: EventScrapeData
+        event_params: EventScrapeData,
+        fetched_json_data: typing.Union[None, typing.List[typing.Dict[str, typing.Union[str, int, float, typing.Dict[str, typing.Union[int, str]]]]]] = None,
 ):
     logger.info(f"Performing scraping event with metadata as {event_params} ...")
-    global limit_page_counter
+    global limit_page_counter, __json_data
+    __json_data = fetched_json_data
+
     try:
         """
             1. initiate Request mode on event-scraping uri
@@ -372,6 +407,7 @@ async def perform_scraping_handling(
 
         __pg_product_mapper: typing.List = list()
         limit_page_counter = event_params.page_limiter
+        __blob_filename: str = "".join([str(datetime.datetime.utcnow()), "-", str(event_params.event_id), ".json"])
 
         async with aiohttp.ClientSession(headers=AGENT_HEADER, timeout=aiohttp.ClientTimeout(20)) as session:
             if bs4_query_response := await __perform_query_search(
@@ -381,9 +417,13 @@ async def perform_scraping_handling(
                     session=session,
                     soup_query_response=bs4_query_response,
                     __pg_product_mapper=__pg_product_mapper,
-                    **{ ## modifying the kwargs params to perform scrape-query event on proxy-search string
+                    ## modifying the kwargs params to perform scrape-query event on proxy-search string
+                    **{
                         "search_href": __init_website_uri if __init_website_uri else event_params.website_uri,
                         "proxy_string": "" if __init_website_uri else event_params.proxy_string,
+                        "event_id": event_id,
+                        "user_id": event_params.user_id,
+                        "blob_filename": __blob_filename,
                     }
                 )
                 del __pg_product_mapper
@@ -391,8 +431,9 @@ async def perform_scraping_handling(
             """
             write the json metadata to file blob storage locally
             """
-            __blob_filename: str = "".join([str(datetime.datetime.utcnow()), "-", str(event_params.event_id), ".json"])
-            if __final_mapper_response:
+
+            # if final scrape_query data-fragment exists but no modification in target website uri scraping
+            if __final_mapper_response and not __no_query_modification:
                 _is_writen = await __write_json_to_file(
                     event_id=str(event_params.event_id),
                     data_dump=__final_mapper_response,
@@ -415,12 +456,17 @@ async def perform_scraping_handling(
 
                 return dict(status_code=200,
                             content={
-                                "msg": f"Successfully performed event-scraping and updated metadata for event_id {event_params.event_id} as required ..."
+                                "msg": f"Successfully performed event-scraping and updated metadata for event_id = {event_params.event_id} as required ..."
                             }
                         )
 
             else:
-                raise Exception
+                return dict(status_code=200,
+                            content={
+                                "msg": f"Successfully performed event-scraping but neither no-query modification or "
+                                       f"scraped metadata existed for event_id = {event_params.event_id} ..."
+                            }
+                        )
 
     except Exception:
         logger.error(traceback.format_exc())

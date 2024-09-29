@@ -32,12 +32,15 @@ from pydantic_serializer import (
     EventScrapeData,
 
 )
-from scrape_query import perform_scraping_handling
+from scrape_query import perform_scraping_handling, check_scrape_event_exists
+from redis_utility import aio_read_file_data, instream_json_parser
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 loggingFormat = "[%(filename)s: %(lineno)s- %(funcName)11s() ] %(asctime)s: %(name)s:%(levelname)s %(message)s"
 logging.basicConfig(format=loggingFormat)
+
 
 app = FastAPI(
     title="Event Management System", openapi_url="/fastapi", docs_url="/api/v1/docs", redoc_url="/fastapi/redoc"
@@ -226,6 +229,14 @@ async def initiate_scrape_event(
     _event_data: typing.Union[None, ScrapeEventTable] = None
     try:
         if params:
+            do_exist, blob_file_path = await check_scrape_event_exists(target_uri=params.website_uri)
+            if do_exist:
+                # load the json-data in memory
+                fetched_json_data = await aio_read_file_data(blob_file_path=blob_file_path)
+                if fetched_json_data:
+                    fetched_json_data = json.loads(fetched_json_data)
+                    instream_json_parser(_json_read_data=fetched_json_data)
+
             _event_data = await ScrapeEventTable.create(params=params)
             # _event_data = await ScrapeEventTable.get_event_details(event_id="91de5046-7dbc-11ef-9317-7295f59fdab3")
             if not _event_data:
@@ -254,7 +265,10 @@ async def initiate_scrape_event(
             __response = await perform_scraping_handling(
                 event_id=_event_data.event_id,
                 event_params=scraping_event_params,
+                fetched_json_data=fetched_json_data,
             )
+
+            del fetched_json_data
 
     except Exception:
         logger.error(traceback.format_exc())
@@ -321,6 +335,7 @@ async def execute_scrape_checkout_session(event_id: str):
                     "status": "CLOSED",
                     "recipient_delivery": True,
                     "is_active": False,
+                    "counted_products": _checkout_session.counted_products,
                 }
 
         # confirm the recipient session event
@@ -345,13 +360,6 @@ async def execute_scrape_checkout_session(event_id: str):
                 event_id=event_id,
                 **_metadata
             )
-
-        _metadata.update(
-            **{
-                "status": "CLOSED",
-                "recipient_delivery": True,
-            }
-        )
 
     except Exception as err:
         logger.error(traceback.format_exc())

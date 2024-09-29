@@ -261,6 +261,26 @@ class ScrapeEventTable(_DBBase):
             return _response
 
     @classmethod
+    async def get_event_details_by_uri(cls, *, target_uri: str):
+        try:
+            async with DBSession() as session:
+                async with session.begin():
+                    query = select(cls).where(cls.website_uri == target_uri).order_by(cls.start_date.desc())
+                    query = await session.execute(query)
+                    _response = query.all()[0]
+
+                await session.commit()
+                session.refresh(cls)
+                await session.close()
+
+        except Exception:
+            logger.error(traceback.format_exc())
+            return None
+
+        else:
+            return _response[0]
+
+    @classmethod
     async def update_event_metadata(cls, *, event_id, **kwargs):
         try:
             async with DBSession() as session:
@@ -297,7 +317,7 @@ class ScrapeEventTable(_DBBase):
 class TransactionTable(_DBBase):
     __tablename__ = "transactions"
 
-    transaction_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid1(), index=True)
+    transaction_id = Column(UUID(as_uuid=True), primary_key=True, index=True)
     transaction_date = Column(DateTime, default=datetime.utcnow)
     column_name = Column(String(255), nullable=False)
     existing_value = Column(String(255), nullable=False)
@@ -312,12 +332,13 @@ class TransactionTable(_DBBase):
         return {"transaction_id": self.transaction_id, "blob_filename": self.blob_filename, "event_id": self.event_id, "user_id": self.user_id, }
 
     @classmethod
-    async def perform_event_transaction(cls, *, column_name: str, existing_value: str, updated_value: str, event_id: int, user_id: int, blob_filename: str, _db: Session = Depends(get_async_session)):
+    async def perform_event_transaction(cls, *, column_name: str, existing_value: str, updated_value: str, event_id: str, user_id: str, blob_filename: str, _db: Session = Depends(get_async_session)):
         if not event_id:
             return "Event id associated with uri scraping doesn't exists ..."
 
         try:
             _tranx_metadata = cls(
+                transaction_id=uuid.uuid1(),
                 column_name=column_name,
                 existing_value=existing_value,
                 updated_value=updated_value,

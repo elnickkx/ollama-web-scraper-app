@@ -39,7 +39,7 @@ CREATE TABLE transactions (
     transaction_date TIMESTAMP NOT NULL,
     column_name VARCHAR(256) NOT NULL,
     existing_value VARCHAR(256) NOT NULL,
-    update_value VARCHAR NOT NULL,
+    updated_value VARCHAR NOT NULL,
     blob_filename VARCHAR(256) NOT NULL,
     event_id UUID REFERENCES scrape_events(event_id) NOT NULL,
     user_id UUID REFERENCES users(user_id) NOT NULL,
