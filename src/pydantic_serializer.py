@@ -76,11 +76,19 @@ class CreateEvent(BaseModel):
     start_date: datetime
     status: typing.Optional[str] = "OPENED"
     user_id: typing.Optional[str]
-    pages: typing.Optional[int] = 3
+    pages: typing.Optional[int] = ""
     proxy_string: typing.Optional[str] = ""
 
     class Config:
         from_attributes = True
+
+    @field_validator("pages")
+    def set_pages(cls, pages: typing.List[int]):
+        return pages or 1
+
+    @field_validator("proxy_string")
+    def set_proxy_string(cls, proxy_string: str):
+        return proxy_string or ""
 
 
 class EventMetadata(BaseModel):
@@ -101,6 +109,7 @@ class EventScrapeData(BaseModel):
     user_id: typing.Optional[str]
     website_uri: typing.Union[str, typing.List]
     page_limiter: int
+    proxy_string: typing.Optional[str] = ""
     # starts_at: typing.Optional[str] = "0" # time-str --> 1330
 
     class Config:
@@ -110,6 +119,10 @@ class EventScrapeData(BaseModel):
     @field_validator("page_limiter")
     def set_page_limiter(cls, page_limiter):
         return page_limiter or 1
+
+    @field_validator("proxy_string")
+    def set_proxy_string(cls, proxy_string: str):
+        return proxy_string or ""
 
 
 __all__ = ["UserLogin", "UserData", "CreateUser", "LoginData", "CheckoutSession", "CreateEvent", "EventScrapeData", "EventMetadata"]

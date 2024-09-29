@@ -36,6 +36,7 @@ import json
 import pathlib
 from constants import df_index_columns
 from db import ScrapeEventTable
+from authentication import perform_retry
 
 
 ## configure the base logger settings for logging
@@ -60,27 +61,37 @@ __agent_header_list = [
 AGENT_HEADER = {'User-Agent': random.choice(__agent_header_list), 'X-Requested-With': 'XMLHttpRequest'}
 logger.info(AGENT_HEADER)
 
-__init_website_uri = "https://dentalstall.com/shop/"
+__init_website_uri = ""
 
 
-async def __perform_query_search(*, session: aiohttp, search_href: str) -> typing.Union[None, Tag]:
-    ## handling to scrape persistive information from INIT_WEBSITE_URI
+@perform_retry(max_retries=3, wait_time=5)
+async def __perform_query_search(*, session: aiohttp, search_href: str, proxy_search: str = "") -> typing.Union[None, Tag]:
+    global __init_website_uri
+    ## handling to scrape persist information from INIT_WEBSITE_URI
     soup_query_response: typing.Union[None, Tag] = None
     try:
         async with session.get(search_href) as scrape_response:
-            scrape_response = await scrape_response.read()
+            if scrape_response.status not in [500]:
+                scrape_response = await scrape_response.read()
 
-            # scrape_authorisation = urlopen(__init_request).read()  # performing web authorisation for request uri
-            soup_query_response = BeautifulSoup(
-                scrape_response.decode('utf-8'),
-                'html.parser'
-            )  # conceive the HTML format response on scraped website
+                # scrape_authorisation = urlopen(__init_request).read()  # performing web authorisation for request uri
+                soup_query_response = BeautifulSoup(
+                    scrape_response.decode('utf-8'),
+                    'html.parser'
+                )  # conceive the HTML format response on scraped website
 
-        ## retry handlin' on search web-query post N seconds
+            else:
+                raise Exception("Mislead website scrape uri, performing decoupling mechanism ...")
 
     except Exception:
         logger.error(traceback.format_exc())
-        return None
+
+        ## decoupled handlin' with proxy-search string
+        if search_href and proxy_search:
+            __init_website_uri = proxy_search
+            return await __perform_query_search(session=session, search_href=__init_website_uri, proxy_search="")
+
+        raise Exception
 
     else:
         return soup_query_response
@@ -99,24 +110,29 @@ restricted options for querying:
 async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_response: Tag,
                                            __pg_product_mapper: typing.List[typing.Dict],
                                            page_idx: typing.Union[None, int] = 1,
-                                           __paginator_index: typing.Union[None, typing.List] = None):
+                                           __paginator_index: typing.Union[None, typing.List] = None, **kwargs):
+
     global limit_page_counter
 
     try:
         if page_idx != 1 and not soup_query_response:
             page_idx = page_idx + 1
-            __followed_page_href = "https://dentalstall.com/shop/page/{0}".format(page_idx)
+            __followed_page_href = os.path.join(kwargs["search_href"], "page", "{0}").format(page_idx)
             print(__followed_page_href)
 
             try:
                 if __recurring_query_resp := __followed_page_href and await __perform_query_search(
                         session=session,
-                        search_href=__followed_page_href):
+                        search_href=__followed_page_href,
+                        proxy_search=kwargs.get("proxy_search")
+                ):
                     return await ___execute_query_scraper_builder(
+                        session=session,
                         soup_query_response=__recurring_query_resp,
                         __pg_product_mapper=__pg_product_mapper,
                         page_idx=page_idx,
                         __paginator_index=__paginator_index,
+                        **kwargs,
                     )
 
             except Exception:
@@ -210,31 +226,34 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
                     __pg_product_mapper.append(__product_hash_mapper)
 
                 page_idx += 1
-                if paginator_scraping:
-                    __followed_page_href = "https://dentalstall.com/shop/page/{0}".format(page_idx)
-                    print(__followed_page_href)
+                __followed_page_href = os.path.join(kwargs["search_href"], "page", "{0}").format(page_idx)
+                print(__followed_page_href)
 
+                if paginator_scraping:
                     if __recurring_query_resp := __followed_page_href and await __perform_query_search(
                             session=session,
-                            search_href=__followed_page_href):
+                            search_href=__followed_page_href,
+                            proxy_search=kwargs.get("proxy_search")
+                    ):
                         return await ___execute_query_scraper_builder(
                             session=session,
                             soup_query_response=__recurring_query_resp,
                             __pg_product_mapper=__pg_product_mapper,
                             page_idx=page_idx,
                             __paginator_index=__paginator_index,
+                            **kwargs,
                         )
 
                     ## if execption intercepted or request uri not found, skip current page and icrement page_idx
                     else:
                         page_idx += 1
-                        __followed_page_href = "https://dentalstall.com/shop/page/{0}".format(page_idx)
                         return await ___execute_query_scraper_builder(
                             session=session,
                             soup_query_response=__recurring_query_resp,
                             __pg_product_mapper=__pg_product_mapper,
                             page_idx=page_idx,
                             __paginator_index=__paginator_index,
+                            **kwargs,
                         )
 
             except (StopIteration, Exception):
@@ -303,7 +322,6 @@ async def perform_scraping_handling(
     logger.info(f"Performing scraping event with metadata as {event_params} ...")
     global limit_page_counter
     try:
-        # TODO: need to first authenticate the user
         """
             1. initiate Request mode on event-scraping uri
             2. once the response captured, forward the page-response to restricted query executor
@@ -321,12 +339,18 @@ async def perform_scraping_handling(
         __pg_product_mapper: typing.List = list()
         limit_page_counter = event_params.page_limiter
 
-        async with aiohttp.ClientSession(headers=AGENT_HEADER, timeout=aiohttp.ClientTimeout(10)) as session:
-            if bs4_query_response := await __perform_query_search(session=session, search_href=__init_website_uri):
+        async with aiohttp.ClientSession(headers=AGENT_HEADER, timeout=aiohttp.ClientTimeout(20)) as session:
+            if bs4_query_response := await __perform_query_search(
+                    session=session, search_href=event_params.website_uri, proxy_search=event_params.proxy_string
+            ):
                 __final_mapper_response = await ___execute_query_scraper_builder(
                     session=session,
                     soup_query_response=bs4_query_response,
                     __pg_product_mapper=__pg_product_mapper,
+                    **{ ## modifying the kwargs params to perform scrape-query event on proxy-search string
+                        "search_href": __init_website_uri if __init_website_uri else event_params.website_uri,
+                        "proxy_string": "" if __init_website_uri else event_params.proxy_string,
+                    }
                 )
                 del __pg_product_mapper
 
@@ -354,11 +378,14 @@ async def perform_scraping_handling(
                     )
                     print("metadata successfully updated ...")
 
-        return dict(status_code=200,
-                    content={
-                        "msg": f"Successfully performed event-scraping and updated metadata for event_id {event_params.event_id} as required ..."
-                    }
-                )
+                return dict(status_code=200,
+                            content={
+                                "msg": f"Successfully performed event-scraping and updated metadata for event_id {event_params.event_id} as required ..."
+                            }
+                        )
+
+            else:
+                raise Exception
 
     except Exception:
         logger.error(traceback.format_exc())

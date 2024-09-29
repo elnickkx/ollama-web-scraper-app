@@ -308,37 +308,50 @@ async def execute_scrape_checkout_session(event_id: str):
     """
 
     try:
-        _event_metadata = OrderedDict()
+        _event_metadata, _tranx_list = OrderedDict(), []
         _checkout_session = await ScrapeEventTable.get_event_details(event_id=event_id)
 
         # fetch the info store within DB on recorded transactions
         _fetch_tranx_session_data = await TransactionTable.fetch_tranx_metadata_by_event_id(
-            event_id=event_id
+            event_id=event_id,
+            blob_filename=_checkout_session.file_blob_path,
         )
 
-        # confirm the recipient session event
-        if _checkout_session and _fetch_tranx_session_data:
-            _metadata = {
-                "column_name": _fetch_tranx_session_data.column_name,
-                "existing_value": _fetch_tranx_session_data.existing_value,
-                "updated_value": _fetch_tranx_session_data.updated_value,
-            }
-
-            await ScrapeEventTable.update_event_metadata(
-                event_id=event_id,
-                **{
+        _metadata = {
                     "status": "CLOSED",
                     "recipient_delivery": True,
                     "is_active": False,
                 }
+
+        # confirm the recipient session event
+        if _checkout_session:
+            if _fetch_tranx_session_data:
+                for _tranx_data in _fetch_tranx_session_data:
+                    _tranx_list.append(
+                        {
+                            "column_name": _fetch_tranx_session_data.column_name,
+                            "existing_value": _fetch_tranx_session_data.existing_value,
+                            "updated_value": _fetch_tranx_session_data.updated_value,
+                        }
+                    )
+
+                _metadata.update(
+                    **{
+                        "metadata": _tranx_list
+                    }
+                )
+
+            await ScrapeEventTable.update_event_metadata(
+                event_id=event_id,
+                **_metadata
             )
 
-            _metadata.update(
-                **{
-                    "status": "CLOSED",
-                    "recipient_delivery": True,
-                }
-            )
+        _metadata.update(
+            **{
+                "status": "CLOSED",
+                "recipient_delivery": True,
+            }
+        )
 
     except Exception as err:
         logger.error(traceback.format_exc())

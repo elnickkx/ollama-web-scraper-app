@@ -359,10 +359,11 @@ class TransactionTable(_DBBase):
             return None
 
     @classmethod
-    async def fetch_tranx_metadata_by_event_id(cls, /, event_id: str):
+    async def fetch_tranx_metadata_by_event_id(cls, /, event_id: str, blob_filename: str):
         """
 
-        :param session_id:
+        :param event_id:
+        :param blob_filename:
         :return:
         """
 
@@ -370,10 +371,14 @@ class TransactionTable(_DBBase):
             async with DBSession() as session:
                 async with session.begin():
                     query = select(cls).where(
-                        cls.stripe_transaction_id == event_id
-                    ).order_by(cls.created_at.desc())
+                        and_(
+                            cls.event_id == event_id,
+                            cls.blob_filename == blob_filename,
+                        )
+
+                    ).order_by(cls.transaction_date.desc())
                     query = await session.execute(query)
-                    _response = query.one()[0]
+                    _response = query.all()
 
                 await session.commit()
                 session.refresh(cls)

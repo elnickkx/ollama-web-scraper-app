@@ -170,6 +170,7 @@ def perform_retry(max_retries: int, wait_time: int):
                     return result
 
                 except Exception as e:
+                    logger.error(traceback.format_exc())
                     retries += 1
                     time.sleep(wait_time)
 
