@@ -313,8 +313,11 @@ async def fetch_event_details(
         return JSONResponse(status_code=status.HTTP_200_OK, content={"event_metadata": _event_metadata})
 
 
-@main_router.get("/recipient-session/success", dependencies=[Depends(AsyncJWTBearer())], response_model=None, response_model_exclude_none=True)
-async def execute_scrape_checkout_session(event_id: str):
+@main_router.get("/recipient-session/{event_id}/success", dependencies=[Depends(AsyncJWTBearer())], response_model=None, response_model_exclude_none=True)
+async def execute_scrape_checkout_session(
+        request: Request,
+        event_id: str,
+):
     """
 
     :param event_id:

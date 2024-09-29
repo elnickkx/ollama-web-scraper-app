@@ -1,0 +1,34 @@
+Rulebook for new test-a-ment project -- Atlys Assignment
+
+ensuring basic overdoing:
+    - api to take requests to perform scrape handlin'
+    - api to initiate service delivery of successful handlin' to recipient
+    - once the api handlin' amended need to introduce scope of retry handlin'
+        post N seconds, will do deduce advance handlin' by designing reprimanded
+        decorator func
+    - then implement handlin' for authentication and authorisation, will postin' RBAC principles
+        [if time do really permits]
+    - Performed the scope handlin' for implementing the Caching Mechanism, to
+        drive the `through in-cache` handling principles.
+
+Enclosed the JWT salt induced authentication modular handlin
+    - performed the in-flight authentication of user credentials
+        and encoded token to verify against hashed user-id
+    - implemented the best practices of integration the authentication validation
+        mechanism as APIs `Dependency Annotator`.
+
+get_event_status --> get_scrape_status by hashed id
+all done :: create_event --> initiate_scrape_event by website uri (P),
+    pages[limiting scraping by pages] (S)
+    retry_sec[N],
+    proxy_string[{presumption: product_tag, updated_by, by_review_quantifier, price_cap, discount_offered}]
+
+Associated tables created::
+    - scraped_event_table -- app definition completed
+
+need to add handlin' to download the linked images to published product
+docker-command to execute the redisjson container locally:
+    - docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 -e REDIS_ARGS="--requirepass mypassword" redis/redis-stack:latest
+    - docker exec -it redis/redis-stack redis-cli
+
+in-memory cache integration -- designed and integrated handlin'

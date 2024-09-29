@@ -1,0 +1,50 @@
+CURL REQUEST ::: POSTMAN for REFERENCE
+
+METHOD::POST
+ENDPOINT::http://localhost:8000/api/v1/scrape/uri
+
+SAMPLE REQUEST:
+    curl --location 'http://localhost:8000/api/v1/scrape/uri' \
+    --header 'Content-Type: application/json' \
+    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiOTY5YmZhZTAtN2RkZC0xMWVmLTk4NzYtNzI5NWY1OWZkYWIzIiwic3ViIjoiYWx0eXNfMUBnbWFpbC5jb20iLCJ1c2VybmFtZSI6ImFsdHlzXzEiLCJpc19hY3RpdmUiOnRydWUsInBlcm1pc3Npb25zIjoiYWRtaW5pc3RyYXRvciIsImV4cCI6MTcyNzY0MjY4Nn0.KUJUJDy-lKQR3Zc7_D01qcC2aHf2HjsnsXXM0b053xM' \
+    --data '{
+        "website_uri": "https://dentalstall.com/shop/",
+        "start_date": "2024-09-28 21:58:20.665449",
+        "pages": 2,
+        "user_id": "969bfae0-7ddd-11ef-9876-7295f59fdab3"
+    }'
+
+METHOD::POST
+ENDPOINT::http://localhost:8000/api/v1/create_user
+
+SAMPLE REQUEST:
+    curl --location 'http://localhost:8000/api/v1/create_user' \
+    --header 'Content-Type: application/json' \
+    --data-raw '{
+        "username": "altys_1",
+        "email_address": "altys_1@gmail.com",
+        "first_name": "altys super",
+        "last_name": "former",
+        "is_admin": true,
+        "password": "passwordchanged"
+
+    }'
+
+METHOD::POST
+ENDPOINT::http://localhost:8000/api/v1/login_user
+
+SAMPLE REQUEST:
+    curl --location 'http://localhost:8000/api/v1/login_user' \
+    --header 'Content-Type: application/json' \
+    --data-raw '{
+        "username": "altys_1",
+        "email": "altys_1@gmail.com",
+        "password": "passwordchanged"
+    }'
+
+METHOD::GET
+ENDPOINT::http://localhost:8000/api/v1/recipient-session/{event-id}/success
+
+SAMPLE REQUEST:
+    curl --location 'http://localhost:8000/api/v1/recipient-session/fc7d79be-7ea1-11ef-af81-7295f59fdab3/success' \
+    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiOTY5YmZhZTAtN2RkZC0xMWVmLTk4NzYtNzI5NWY1OWZkYWIzIiwic3ViIjoiYWx0eXNfMUBnbWFpbC5jb20iLCJ1c2VybmFtZSI6ImFsdHlzXzEiLCJpc19hY3RpdmUiOnRydWUsInBlcm1pc3Npb25zIjoiYWRtaW5pc3RyYXRvciIsImV4cCI6MTcyNzY0NTMwNH0.hxTqXcOKui1aHaLpVFnGEcIisxztHZQTwiuhb6dlRJA'
