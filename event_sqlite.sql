@@ -13,6 +13,7 @@ CREATE TABLE scrape_events (
     status VARCHAR(20) NOT NULL,
     is_active BOOLEAN NOT NULL,
     recipient_delivery BOOLEAN NOT NULL,
+    counted_products INTEGER DEFAULT 0 NOT NULL,
     event_metadata JSONB,
     CONSTRAINT pk_event PRIMARY KEY (event_id)
 );

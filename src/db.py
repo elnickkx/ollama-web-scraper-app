@@ -196,6 +196,7 @@ class ScrapeEventTable(_DBBase):
     status = Column(String, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     recipient_delivery = Column(Boolean, default=False, nullable=False)
+    counted_products = Column(Integer, default=0,  nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.user_id"))
     event_metadata = Column(JSONB, nullable=True)
 
@@ -203,7 +204,7 @@ class ScrapeEventTable(_DBBase):
     user = relationship("UserTable", back_populates="events")
 
     def serialize(self):
-        return {"name": self.event_name, "id": str(self.event_id), "current_status": self.status, "website_uri": self.website_uri, "start_date": str(self.start_date), "end_date": str(self.end_date)}
+        return {"name": self.event_name, "id": str(self.event_id), "current_status": self.status, "website_uri": self.website_uri, "start_date": str(self.start_date), "end_date": str(self.end_date), "counted_products": self.counted_products}
 
     @classmethod
     async def create(cls, *, params, _db: Session = Depends(get_async_session)):
