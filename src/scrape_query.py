@@ -47,7 +47,7 @@ logging.basicConfig(format=loggingFormat)
 
 # setting the pd dataframe maximum width
 pd.set_option('display.max_colwidth', None)
-limit_page_counter = 1  ## default value for limit page counter[need to set as env]
+limit_page_counter, image_counter = 1, 1  ## default value for limit page counter[need to set as env]
 
 __agent_header_list = [
     'Mozilla/5.0 (Windows; U; Windows NT 6.1; x64; fr; rv:1.9.2.13) Gecko/20101203 Firebird/3.6.13',
@@ -97,6 +97,37 @@ async def __perform_query_search(*, session: aiohttp, search_href: str, proxy_se
         return soup_query_response
 
 
+async def __download_images_from_uri(*,session: aiohttp, images_link: typing.List[str]) -> typing.List[str]:
+    global image_counter
+    __images_blob_path: typing.List = []
+    if images_link:
+        try:
+            for _img_link in images_link:
+                __root_blob_path: pathlib.Path = pathlib.Path(__file__).parent.joinpath('local-blob-images').joinpath(str(datetime.date.today()))
+                __root_blob_path.mkdir(parents=True, exist_ok=True)
+                __blob_filename = os.path.join(__root_blob_path, "product_image_{}.jpg".format(image_counter))
+
+                async with session.get(_img_link) as binary_response:
+                    _bin_img = await binary_response.read()
+
+                    ## create the file-blob and write the scraped json data to it
+                    async with aiofiles.open(__blob_filename, mode="wb", buffering=1) as _fp_buffer:
+                        await _fp_buffer.write(_bin_img)
+
+                image_counter += 1
+                __images_blob_path.append(__blob_filename)
+
+        except (IsADirectoryError, IndexError, Exception):
+            logger.error(traceback.format_exc())
+            return [""]
+
+        else:
+            return __images_blob_path
+
+    else:
+        return [""]
+
+
 """
 need to perform query filter on displayed product on init_query website
 product-metadata -> product_name: str, published_price: union[int, str], associated_images: List['uri': str]
@@ -112,7 +143,7 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
                                            page_idx: typing.Union[None, int] = 1,
                                            __paginator_index: typing.Union[None, typing.List] = None, **kwargs):
 
-    global limit_page_counter
+    global limit_page_counter, image_counter
 
     try:
         if page_idx != 1 and not soup_query_response:
@@ -194,16 +225,23 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
                     if __fetch_assoc_img_links := _product_attrs.get(
                             "data-lazy-srcset") if "data-lazy-srcset" in _product_attrs else _product_attrs.get(
                         "data-lazy-src"):
-                        __meta_images.extend([link.split(re.search(regex_qualifier, link)[0])[0].strip() if re.search(
-                            regex_qualifier, link) else link.strip() for link in __fetch_assoc_img_links.split(',')])
+                        __product_img_links = [link.split(re.search(regex_qualifier, link)[0])[0].strip() if re.search(
+                            regex_qualifier, link) else link.strip() for link in __fetch_assoc_img_links.split(',')]
+
+                        if __product_img_links:
+                            ## download and store images locally, and capture the local blob address
+                            __product_img_paths = await __download_images_from_uri(
+                                session=session, images_link=__product_img_links,
+                            )
+                            __meta_images.extend(__product_img_paths)
                         # print(__meta_images)
 
                     else:
                         print(_product.select("img")[0].attrs)
 
-                    __product_hash_mapper["product_identifier"] = str(uuid.uuid1())
-                    __product_hash_mapper["page_id"] = page_idx
-                    __product_hash_mapper["product_description"] = _product.select("h2")[0].get_text().strip()
+                    # __product_hash_mapper["product_identifier"] = str(uuid.uuid1())
+                    # __product_hash_mapper["page_id"] = page_idx
+                    __product_hash_mapper["product_title"] = _product.select("h2")[0].get_text().strip()
 
                     ## if not discount offered on product
                     if product_price := _product.select("del span bdi"):
@@ -265,10 +303,6 @@ async def ___execute_query_scraper_builder(*, session: aiohttp, soup_query_respo
     else:
         return __pg_product_mapper
 
-
-# prod_metadata_df = pd.DataFrame(__pg_product_mapper, columns=df_index_columns)
-# prod_metadata_df.reset_index()
-# _json = json.loads(prod_metadata_df.to_json())
 
 async def __write_json_to_file(*, event_id: str,  data_dump: typing.List[typing.Dict], blob_filename: str) -> bool:
     """
@@ -374,6 +408,7 @@ async def perform_scraping_handling(
                         **{
                             "file_blob_path": __blob_filename,
                             "status": "SCRAPED",
+                            "counted_products": len(__final_mapper_response)
                         }
                     )
                     print("metadata successfully updated ...")
@@ -393,3 +428,6 @@ async def perform_scraping_handling(
 
 
 __all__ = ["perform_scraping_handling", "__init_website_uri"]
+# prod_metadata_df = pd.DataFrame(__pg_product_mapper, columns=df_index_columns)
+# prod_metadata_df.reset_index()
+# _json = json.loads(prod_metadata_df.to_json())
